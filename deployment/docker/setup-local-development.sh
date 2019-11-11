@@ -337,3 +337,361 @@ services:
       - '--storage.tsdb.retention.time=200h'
       - '--web.enable-lifecycle'
     networks:
+      - mcp-dev
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mcp-grafana-dev
+    ports:
+      - "${GRAFANA_PORT}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=REDACTED_PASSWORD
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana:/etc/grafana/provisioning
+    networks:
+      - mcp-dev
+    depends_on:
+      - prometheus
+
+  # Development tools
+  mcp-dev-dashboard:
+    build:
+      context: ./tools/dashboard
+      dockerfile: Dockerfile
+    container_name: mcp-dashboard-dev
+    ports:
+      - "8080:8080"
+    environment:
+      - MCP_SERVERS_CONFIG=/app/config/servers.json
+    volumes:
+      - ./tools/dashboard:/app
+      - ./config:/app/config
+    networks:
+      - mcp-dev
+
+networks:
+  mcp-dev:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+EOF
+
+    log "Development Docker Compose file created"
+}
+
+# Create server directories with basic Dockerfiles
+create_server_structure() {
+    log "Creating server directory structure..."
+
+    local servers=(
+        "github:nodejs"
+        "docker:python"
+        "postgresql:golang"
+        "postman:nodejs"
+        "slack:nodejs"
+        "notion:nodejs"
+        "realestate-crm:nodejs"
+        "zillow:python"
+    )
+
+    for server_info in "${servers[@]}"; do
+        IFS=':' read -r server type <<< "$server_info"
+        local server_dir="$PROJECT_ROOT/local-servers/servers/$server"
+
+        mkdir -p "$server_dir"
+
+        # Create development Dockerfile
+        case "$type" in
+            "nodejs")
+                cat > "$server_dir/Dockerfile.dev" << 'EOF'
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install development dependencies
+RUN apk add --no-cache git curl
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Expose port
+EXPOSE 3000
+
+# Development command with hot reload
+CMD ["npm", "run", "dev"]
+EOF
+                ;;
+            "python")
+                cat > "$server_dir/Dockerfile.dev" << 'EOF'
+FROM python:3.11-alpine
+
+WORKDIR /app
+
+# Install development dependencies
+RUN apk add --no-cache git curl gcc musl-dev
+
+# Copy requirements
+COPY requirements*.txt ./
+
+# Install Python dependencies
+RUN pip install -r requirements.txt
+
+# Copy source code
+COPY . .
+
+# Expose port
+EXPOSE 3000
+
+# Development command
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3000", "--reload"]
+EOF
+                ;;
+            "golang")
+                cat > "$server_dir/Dockerfile.dev" << 'EOF'
+FROM golang:1.21-alpine
+
+WORKDIR /app
+
+# Install development dependencies
+RUN apk add --no-cache git curl
+
+# Copy go mod files
+COPY go.* ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build application
+RUN go build -o main .
+
+# Expose port
+EXPOSE 3000
+
+# Development command
+CMD ["./main"]
+EOF
+                ;;
+        esac
+
+        # Create basic package.json for Node.js servers
+        if [[ "$type" == "nodejs" ]]; then
+            cat > "$server_dir/package.json" << EOF
+{
+  "name": "mcp-$server-server",
+  "version": "1.0.0",
+  "description": "MCP Server for $server",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "express": "^4.18.0",
+    "dotenv": "^16.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0",
+    "jest": "^29.0.0"
+  }
+}
+EOF
+        fi
+
+        # Create basic requirements.txt for Python servers
+        if [[ "$type" == "python" ]]; then
+            cat > "$server_dir/requirements.txt" << 'EOF'
+fastapi==0.104.1
+uvicorn==0.24.0
+python-dotenv==1.0.0
+httpx==0.25.0
+pydantic==2.5.0
+mcp==1.0.0
+EOF
+        fi
+
+        info "Created server structure for $server ($type)"
+    done
+}
+
+# Create monitoring configuration
+create_monitoring_config() {
+    log "Creating monitoring configuration..."
+
+    mkdir -p "$PROJECT_ROOT/local-servers/monitoring"
+
+    # Prometheus configuration
+    cat > "$PROJECT_ROOT/local-servers/monitoring/prometheus-dev.yml" << 'EOF'
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'mcp-servers'
+    static_configs:
+      - targets:
+        - 'github-mcp:3001'
+        - 'docker-mcp:3002'
+        - 'postgresql-mcp:3003'
+        - 'postman-mcp:3004'
+        - 'slack-mcp:3008'
+        - 'notion-mcp:3009'
+        - 'realestate-crm-mcp:3011'
+        - 'zillow-mcp:3013'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  - job_name: 'infrastructure'
+    static_configs:
+      - targets:
+        - 'postgres:5432'
+        - 'redis:6379'
+EOF
+
+    # Grafana provisioning
+    mkdir -p "$PROJECT_ROOT/local-servers/monitoring/grafana/provisioning/datasources"
+    mkdir -p "$PROJECT_ROOT/local-servers/monitoring/grafana/provisioning/dashboards"
+
+    cat > "$PROJECT_ROOT/local-servers/monitoring/grafana/provisioning/datasources/prometheus.yml" << 'EOF'
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+EOF
+
+    log "Monitoring configuration created"
+}
+
+# Create management scripts
+create_management_scripts() {
+    log "Creating management scripts..."
+
+    # Start script
+    cat > "$PROJECT_ROOT/local-servers/start-dev.sh" << 'EOF'
+#!/bin/bash
+set -e
+
+echo "Starting MCP Development Environment..."
+
+# Check if .env file exists
+if [[ ! -f .env.development ]]; then
+    echo "Error: .env.development file not found!"
+    echo "Please run setup-local-development.sh first"
+    exit 1
+fi
+
+# Load environment variables
+export $(grep -v '^#' .env.development | xargs)
+
+# Start services
+docker-compose -f docker-compose-dev.yml up -d
+
+echo "Development environment started!"
+echo ""
+echo "Services available at:"
+echo "  - MCP Dashboard: http://localhost:8080"
+echo "  - Grafana: http://localhost:${GRAFANA_PORT} (admin/admin)"
+echo "  - Prometheus: http://localhost:${PROMETHEUS_PORT}"
+echo ""
+echo "MCP Servers:"
+echo "  - GitHub: http://localhost:${GITHUB_PORT}"
+echo "  - Docker: http://localhost:${DOCKER_PORT}"
+echo "  - PostgreSQL: http://localhost:${POSTGRESQL_PORT}"
+echo "  - Postman: http://localhost:${POSTMAN_PORT}"
+echo "  - Slack: http://localhost:${SLACK_PORT}"
+echo "  - Notion: http://localhost:${NOTION_PORT}"
+echo "  - Real Estate CRM: http://localhost:${REALESTATE_CRM_PORT}"
+echo "  - Zillow: http://localhost:${ZILLOW_PORT}"
+EOF
+
+    chmod +x "$PROJECT_ROOT/local-servers/start-dev.sh"
+
+    # Stop script
+    cat > "$PROJECT_ROOT/local-servers/stop-dev.sh" << 'EOF'
+#!/bin/bash
+set -e
+
+echo "Stopping MCP Development Environment..."
+
+docker-compose -f docker-compose-dev.yml down
+
+echo "Development environment stopped!"
+EOF
+
+    chmod +x "$PROJECT_ROOT/local-servers/stop-dev.sh"
+
+    # Status script
+    cat > "$PROJECT_ROOT/local-servers/status-dev.sh" << 'EOF'
+#!/bin/bash
+
+echo "MCP Development Environment Status:"
+echo "=================================="
+
+docker-compose -f docker-compose-dev.yml ps
+
+echo ""
+echo "Health Checks:"
+echo "=============="
+
+services=("github-mcp:3001" "docker-mcp:3002" "postgresql-mcp:3003" "postman-mcp:3004")
+
+for service in "${services[@]}"; do
+    IFS=':' read -r name port <<< "$service"
+    if curl -sf "http://localhost:$port/health" >/dev/null 2>&1; then
+        echo "✅ $name - Healthy"
+    else
+        echo "❌ $name - Unhealthy"
+    fi
+done
+EOF
+
+    chmod +x "$PROJECT_ROOT/local-servers/status-dev.sh"
+
+    log "Management scripts created"
+}
+
+# Main setup function
+main() {
+    log "Setting up MCP Servers Local Development Environment"
+    log "=================================================="
+
+    check_prerequisites
+
+    # Create directory structure
+    mkdir -p "$PROJECT_ROOT/local-servers"
+    mkdir -p "$PROJECT_ROOT/local-servers/servers"
+    mkdir -p "$PROJECT_ROOT/local-servers/config"
+    mkdir -p "$PROJECT_ROOT/local-servers/tools/dashboard"
+
+    create_env_file
+    create_docker_compose
