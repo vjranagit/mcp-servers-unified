@@ -1,0 +1,253 @@
+---
+- name: Deploy Comprehensive MCP Servers for Software House & Real Estate LLC
+  hosts: all
+  become: yes
+  vars:
+    mcp_servers:
+      # Core Development & DevOps Servers
+      github:
+        repo: "https://github.com/modelcontextprotocol/servers.git"
+        type: "nodejs"
+        port: 3001
+        subpath: "src/github"
+        description: "GitHub MCP Server - Repository management, issues, PRs, actions"
+        env_vars:
+          - "GITHUB_TOKEN={{ github_token }}"
+        category: "development"
+
+      docker:
+        repo: "https://github.com/modelcontextprotocol/servers.git"
+        type: "python"
+        port: 3002
+        subpath: "src/docker"
+        description: "Docker MCP Server - Container management and operations"
+        env_vars:
+          - "DOCKER_HOST=unix:///var/run/docker.sock"
+        category: "development"
+
+      postgresql:
+        repo: "https://github.com/FreePeak/db-mcp-server.git"
+        type: "golang"
+        port: 3003
+        description: "PostgreSQL MCP Server - Database operations, query optimization"
+        env_vars:
+          - "DATABASE_URI={{ postgresql_connection_string }}"
+        category: "development"
+
+      postman:
+        repo: "https://github.com/delano/postman-mcp-server.git"
+        type: "nodejs"
+        port: 3004
+        description: "Postman MCP Server - API testing, documentation, management"
+        env_vars:
+          - "POSTMAN_API_KEY={{ postman_api_key }}"
+        category: "development"
+
+      azuredevops:
+        repo: "https://github.com/microsoft/azure-devops-mcp.git"
+        type: "nodejs"
+        port: 3005
+        description: "Azure DevOps MCP - Build pipelines, work items, project management"
+        env_vars:
+          - "AZURE_DEVOPS_TOKEN={{ azure_devops_token }}"
+          - "AZURE_DEVOPS_ORG={{ azure_devops_org }}"
+        category: "development"
+
+      # Security & Monitoring Servers
+      jfrog:
+        repo: "https://github.com/jfrog/jfrog-mcp-server.git"
+        type: "nodejs"
+        port: 3006
+        description: "JFrog MCP Server - Artifact management, security scanning"
+        env_vars:
+          - "JFROG_URL={{ jfrog_url }}"
+          - "JFROG_TOKEN={{ jfrog_token }}"
+        category: "security"
+
+      cloudflare:
+        repo: "https://github.com/cloudflare/mcp-server.git"
+        type: "nodejs"
+        port: 3007
+        description: "Cloudflare MCP Server - Performance monitoring, threat detection"
+        env_vars:
+          - "CLOUDFLARE_API_TOKEN={{ cloudflare_api_token }}"
+          - "CLOUDFLARE_ZONE_ID={{ cloudflare_zone_id }}"
+        category: "security"
+
+      # Business Operations Servers
+      slack:
+        repo: "https://github.com/waystation-ai/mcp.git"
+        type: "nodejs"
+        port: 3008
+        subpath: "servers/slack"
+        description: "Slack MCP Server - Team communication, workflow automation"
+        env_vars:
+          - "SLACK_BOT_TOKEN={{ slack_bot_token }}"
+          - "SLACK_SIGNING_SECRET={{ slack_signing_secret }}"
+        category: "business"
+
+      notion:
+        repo: "https://github.com/makenotion/notion-mcp-server.git"
+        type: "nodejs"
+        port: 3009
+        description: "Notion MCP Server - Documentation, project planning, knowledge management"
+        env_vars:
+          - "NOTION_TOKEN={{ notion_token }}"
+        category: "business"
+
+      xero:
+        repo: "https://github.com/XeroAPI/xero-mcp-server.git"
+        type: "nodejs"
+        port: 3010
+        description: "Xero MCP Server - Accounting, invoicing, financial reporting"
+        env_vars:
+          - "XERO_CLIENT_ID={{ xero_client_id }}"
+          - "XERO_CLIENT_SECRET={{ xero_client_secret }}"
+        category: "business"
+
+      # Real Estate Servers
+      realestate_crm:
+        repo: "https://github.com/recrmio/recrmio-mcp-server.git"
+        type: "nodejs"
+        port: 3011
+        description: "Real Estate CRM MCP Server - Property management, client relationships"
+        env_vars:
+          - "RECRM_API_KEY={{ recrm_api_key }}"
+        category: "realestate"
+
+      batchdata_realestate:
+        repo: "https://github.com/zellerhaus/batchdata-real-estate-mcp.git"
+        type: "nodejs"
+        port: 3012
+        description: "BatchData Real Estate MCP - Market analysis, property data"
+        env_vars:
+          - "BATCHDATA_API_KEY={{ batchdata_api_key }}"
+        category: "realestate"
+
+      zillow:
+        repo: "https://github.com/sap156/zillow-mcp-server.git"
+        type: "python"
+        port: 3013
+        description: "Zillow MCP Server - Real-time property data, market trends"
+        env_vars:
+          - "ZILLOW_API_KEY={{ zillow_api_key }}"
+        category: "realestate"
+
+      # Enhanced Productivity Servers
+      filesystem:
+        repo: "https://github.com/modelcontextprotocol/servers.git"
+        type: "python"
+        port: 3014
+        subpath: "src/filesystem"
+        description: "Filesystem MCP Server - File operations, document management"
+        env_vars:
+          - "ALLOWED_PATHS={{ allowed_file_paths }}"
+        category: "productivity"
+
+      calendar:
+        repo: "https://github.com/google/calendar-mcp-server.git"
+        type: "nodejs"
+        port: 3015
+        description: "Calendar MCP Server - Scheduling, appointment management"
+        env_vars:
+          - "GOOGLE_CALENDAR_CREDENTIALS={{ google_calendar_credentials }}"
+        category: "productivity"
+
+  tasks:
+    - name: Create base MCP directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ mcp_servers_base_dir }}"
+        - "{{ mcp_config_dir }}"
+        - "{{ mcp_log_dir }}"
+        - "{{ mcp_servers_base_dir }}/data"
+        - "{{ mcp_servers_base_dir }}/secrets"
+
+    - name: Install comprehensive system dependencies
+      package:
+        name:
+          - git
+          - curl
+          - wget
+          - python3
+          - python3-pip
+          - python3-venv
+          - nodejs
+          - npm
+          - docker.io
+          - docker-compose
+          - golang-go
+          - postgresql-client
+          - redis-tools
+          - jq
+          - unzip
+        state: present
+
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add user to docker group
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+
+    - name: Clone all MCP server repositories
+      git:
+        repo: "{{ item.value.repo }}"
+        dest: "{{ mcp_servers_base_dir }}/{{ item.key }}"
+        version: main
+        force: yes
+      loop: "{{ mcp_servers | dict2items }}"
+      tags:
+        - clone
+        - update
+
+    - name: Install Node.js dependencies for Node.js MCP servers
+      npm:
+        path: "{{ mcp_servers_base_dir }}/{{ item.key }}/{{ item.value.subpath | default('') }}"
+        state: present
+        production: yes
+      when: item.value.type == "nodejs"
+      loop: "{{ mcp_servers | dict2items }}"
+      ignore_errors: yes
+      tags: nodejs
+
+    - name: Create Python virtual environments for Python MCP servers
+      pip:
+        requirements: "{{ mcp_servers_base_dir }}/{{ item.key }}/{{ item.value.subpath | default('') }}/requirements.txt"
+        virtualenv: "{{ mcp_servers_base_dir }}/{{ item.key }}/venv"
+        virtualenv_command: python3 -m venv
+      when:
+        - item.value.type == "python"
+      loop: "{{ mcp_servers | dict2items }}"
+      ignore_errors: yes
+      tags: python
+
+    - name: Build Go modules for Golang MCP servers
+      shell: |
+        cd {{ mcp_servers_base_dir }}/{{ item.key }}
+        go mod download
+        go build -o {{ item.key }}-server
+      when: item.value.type == "golang"
+      loop: "{{ mcp_servers | dict2items }}"
+      ignore_errors: yes
+      tags: golang
+
+    - name: Create environment files for each MCP server
+      template:
+        src: mcp-env.j2
+        dest: "{{ mcp_servers_base_dir }}/{{ item.key }}/.env"
+        mode: '0600'
+      loop: "{{ mcp_servers | dict2items }}"
+      tags: config
+
+    - name: Create systemd service files for MCP servers
+      template:
+        src: mcp-service.service.j2
