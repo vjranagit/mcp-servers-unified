@@ -1,0 +1,321 @@
+#!/bin/bash
+
+# MCP Servers Health Check Script
+# Comprehensive monitoring for all MCP servers
+
+set -euo pipefail
+
+# Configuration
+MCP_BASE_DIR="{{ mcp_servers_base_dir }}"
+MCP_LOG_DIR="{{ mcp_log_dir }}"
+HEALTH_LOG="$MCP_LOG_DIR/health-check.log"
+ALERT_THRESHOLD=3
+NOTIFICATION_EMAIL="${notification_email:-admin@example.com}"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# Server configurations
+declare -A SERVERS=(
+{% for server_name, server_config in mcp_servers.items() %}
+    ["{{ server_name }}"]="{{ server_config.port }}"
+{% endfor %}
+)
+
+declare -A SERVER_CATEGORIES=(
+{% for server_name, server_config in mcp_servers.items() %}
+    ["{{ server_name }}"]="{{ server_config.category }}"
+{% endfor %}
+)
+
+# Logging
+log() {
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] $1" | tee -a "$HEALTH_LOG"
+}
+
+log_error() {
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo -e "[$timestamp] ${RED}ERROR${NC}: $1" | tee -a "$HEALTH_LOG"
+}
+
+log_warn() {
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo -e "[$timestamp] ${YELLOW}WARNING${NC}: $1" | tee -a "$HEALTH_LOG"
+}
+
+log_success() {
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo -e "[$timestamp] ${GREEN}SUCCESS${NC}: $1" | tee -a "$HEALTH_LOG"
+}
+
+# Health check functions
+check_service_status() {
+    local server="$1"
+
+    if systemctl is-active --quiet "mcp-$server"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+check_http_endpoint() {
+    local server="$1"
+    local port="${SERVERS[$server]}"
+    local timeout=5
+
+    if curl -s -f --max-time "$timeout" "http://localhost:$port/health" >/dev/null 2>&1; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+check_port_listening() {
+    local server="$1"
+    local port="${SERVERS[$server]}"
+
+    if netstat -ln | grep -q ":$port "; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+check_process_running() {
+    local server="$1"
+
+    if pgrep -f "mcp-$server" >/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+check_log_errors() {
+    local server="$1"
+    local log_file="$MCP_LOG_DIR/$server.log"
+    local recent_errors=0
+
+    if [[ -f "$log_file" ]]; then
+        # Check for errors in the last 5 minutes
+        recent_errors=$(grep -c "ERROR\|FATAL\|CRITICAL" "$log_file" | tail -100 | wc -l)
+    fi
+
+    if [[ "$recent_errors" -gt "$ALERT_THRESHOLD" ]]; then
+        return 1
+    else
+        return 0
+    fi
+}
+
+check_disk_space() {
+    local usage
+    usage=$(df "$MCP_BASE_DIR" | awk 'NR==2 {print $5}' | sed 's/%//')
+
+    if [[ "$usage" -gt 85 ]]; then
+        log_warn "Disk usage is high: ${usage}%"
+        return 1
+    else
+        return 0
+    fi
+}
+
+check_memory_usage() {
+    local server="$1"
+    local pid
+    local memory_mb
+
+    pid=$(pgrep -f "mcp-$server" | head -1)
+    if [[ -n "$pid" ]]; then
+        memory_mb=$(ps -p "$pid" -o rss= | awk '{print $1/1024}')
+
+        # Alert if memory usage is above 1GB
+        if (( $(echo "$memory_mb > 1024" | bc -l) )); then
+            log_warn "High memory usage for $server: ${memory_mb}MB"
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+# Comprehensive health check for a single server
+check_server_health() {
+    local server="$1"
+    local port="${SERVERS[$server]}"
+    local category="${SERVER_CATEGORIES[$server]}"
+    local health_score=0
+    local max_score=6
+    local issues=()
+
+    echo -e "\n${BLUE}Checking $server (${category}) on port ${port}...${NC}"
+
+    # Service status check
+    if check_service_status "$server"; then
+        log_success "$server service is active"
+        ((health_score++))
+    else
+        log_error "$server service is not active"
+        issues+=("Service not active")
+    fi
+
+    # Port listening check
+    if check_port_listening "$server"; then
+        log_success "$server is listening on port $port"
+        ((health_score++))
+    else
+        log_error "$server is not listening on port $port"
+        issues+=("Port not listening")
+    fi
+
+    # Process running check
+    if check_process_running "$server"; then
+        log_success "$server process is running"
+        ((health_score++))
+    else
+        log_error "$server process is not running"
+        issues+=("Process not running")
+    fi
+
+    # HTTP health endpoint check
+    if check_http_endpoint "$server"; then
+        log_success "$server health endpoint is responding"
+        ((health_score++))
+    else
+        log_warn "$server health endpoint is not responding"
+        issues+=("Health endpoint not responding")
+    fi
+
+    # Log errors check
+    if check_log_errors "$server"; then
+        log_success "$server has no recent errors"
+        ((health_score++))
+    else
+        log_warn "$server has recent errors in logs"
+        issues+=("Recent errors in logs")
+    fi
+
+    # Memory usage check
+    if check_memory_usage "$server"; then
+        log_success "$server memory usage is normal"
+        ((health_score++))
+    else
+        issues+=("High memory usage")
+    fi
+
+    # Calculate health percentage
+    local health_percent=$((health_score * 100 / max_score))
+
+    # Determine health status
+    local status_color
+    local status_text
+    if [[ $health_percent -ge 90 ]]; then
+        status_color="$GREEN"
+        status_text="EXCELLENT"
+    elif [[ $health_percent -ge 75 ]]; then
+        status_color="$GREEN"
+        status_text="GOOD"
+    elif [[ $health_percent -ge 50 ]]; then
+        status_color="$YELLOW"
+        status_text="WARNING"
+    else
+        status_color="$RED"
+        status_text="CRITICAL"
+    fi
+
+    echo -e "${status_color}$server Health: $status_text ($health_percent%)${NC}"
+
+    if [[ ${#issues[@]} -gt 0 ]]; then
+        echo -e "${YELLOW}Issues found:${NC}"
+        for issue in "${issues[@]}"; do
+            echo "  - $issue"
+        done
+    fi
+
+    return $health_score
+}
+
+# Generate health report
+generate_health_report() {
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local total_servers=${#SERVERS[@]}
+    local healthy_servers=0
+    local warning_servers=0
+    local critical_servers=0
+
+    echo "========================================="
+    echo "MCP Servers Health Report"
+    echo "Generated: $timestamp"
+    echo "========================================="
+
+    for server in "${!SERVERS[@]}"; do
+        check_server_health "$server"
+        local health_score=$?
+        local health_percent=$((health_score * 100 / 6))
+
+        if [[ $health_percent -ge 75 ]]; then
+            ((healthy_servers++))
+        elif [[ $health_percent -ge 50 ]]; then
+            ((warning_servers++))
+        else
+            ((critical_servers++))
+        fi
+    done
+
+    echo ""
+    echo "========================================="
+    echo "Summary:"
+    echo "  Total Servers: $total_servers"
+    echo -e "  ${GREEN}Healthy: $healthy_servers${NC}"
+    echo -e "  ${YELLOW}Warning: $warning_servers${NC}"
+    echo -e "  ${RED}Critical: $critical_servers${NC}"
+    echo "========================================="
+
+    # System-wide checks
+    echo -e "\n${BLUE}System-wide checks:${NC}"
+
+    if check_disk_space; then
+        log_success "Disk space is adequate"
+    else
+        log_warn "Disk space is running low"
+    fi
+
+    # Docker status (if using Docker deployment)
+    if command -v docker >/dev/null && docker ps >/dev/null 2>&1; then
+        local docker_containers
+        docker_containers=$(docker ps -q --filter "label=mcp.server" | wc -l)
+        log_success "Docker is running with $docker_containers MCP containers"
+    fi
+
+    echo ""
+}
+
+# Send alert notification
+send_alert() {
+    local subject="$1"
+    local message="$2"
+
+    if command -v mail >/dev/null; then
+        echo "$message" | mail -s "$subject" "$NOTIFICATION_EMAIL"
+        log "Alert sent to $NOTIFICATION_EMAIL"
+    else
+        log_warn "Mail command not available, cannot send email alert"
+    fi
+}
+
+# Monitor mode - continuous monitoring
+monitor_mode() {
+    local interval="${1:-60}"  # Default 60 seconds
+
+    log "Starting continuous monitoring (interval: ${interval}s)"
+
+    while true; do
+        local failed_servers=()
+
+        for server in "${!SERVERS[@]}"; do
