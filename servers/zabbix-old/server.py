@@ -241,3 +241,242 @@ class ZabbixMCPServer(BaseMCPServer):
                 properties={
                     "template": {
                         "type": "string",
+                        "description": "Template name"
+                    },
+                    "hostname": {
+                        "type": "string",
+                        "description": "Hostname to link template to"
+                    }
+                },
+                required=["template", "hostname"]
+            )
+        )
+
+        self.register_tool(
+            name="unlink_template_from_host",
+            description="Unlink a template from a host",
+            handler=self.unlink_template_from_host,
+            schema=create_json_schema(
+                properties={
+                    "template": {
+                        "type": "string",
+                        "description": "Template name"
+                    },
+                    "hostname": {
+                        "type": "string",
+                        "description": "Hostname to unlink template from"
+                    }
+                },
+                required=["template", "hostname"]
+            )
+        )
+
+        # Items and monitoring
+        self.register_tool(
+            name="show_items",
+            description="Show monitoring items for a host",
+            handler=self.show_items,
+            schema=create_json_schema(
+                properties={
+                    "hostname": {
+                        "type": "string",
+                        "description": "Hostname to show items for"
+                    }
+                },
+                required=["hostname"]
+            )
+        )
+
+        self.register_tool(
+            name="show_last_values",
+            description="Show last values for monitoring items",
+            handler=self.show_last_values,
+            schema=create_json_schema(
+                properties={
+                    "hostname": {
+                        "type": "string",
+                        "description": "Hostname to show last values for"
+                    },
+                    "filter": {
+                        "type": "string",
+                        "description": "Optional filter for item names"
+                    }
+                },
+                required=["hostname"]
+            )
+        )
+
+        # Triggers and problems
+        self.register_tool(
+            name="show_triggers",
+            description="Show triggers for a host",
+            handler=self.show_triggers,
+            schema=create_json_schema(
+                properties={
+                    "hostname": {
+                        "type": "string",
+                        "description": "Hostname to show triggers for"
+                    }
+                },
+                required=["hostname"]
+            )
+        )
+
+        self.register_tool(
+            name="show_alarms",
+            description="Show current alarms/problems",
+            handler=self.show_alarms,
+            schema=create_json_schema(
+                properties={
+                    "group": {
+                        "type": "string",
+                        "description": "Optional hostgroup filter"
+                    },
+                    "severity": {
+                        "type": "string",
+                        "description": "Minimum severity (0-5)"
+                    }
+                },
+                required=[]
+            )
+        )
+
+        self.register_tool(
+            name="acknowledge_event",
+            description="Acknowledge an event/problem",
+            handler=self.acknowledge_event,
+            schema=create_json_schema(
+                properties={
+                    "eventid": {
+                        "type": "string",
+                        "description": "Event ID to acknowledge"
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "Acknowledgement message"
+                    }
+                },
+                required=["eventid", "message"]
+            )
+        )
+
+        # Users
+        self.register_tool(
+            name="show_users",
+            description="Show all Zabbix users",
+            handler=self.show_users,
+            schema=create_json_schema(properties={}, required=[])
+        )
+
+        self.register_tool(
+            name="create_user",
+            description="Create a new Zabbix user",
+            handler=self.create_user,
+            schema=create_json_schema(
+                properties={
+                    "username": {
+                        "type": "string",
+                        "description": "Username"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Full name"
+                    },
+                    "surname": {
+                        "type": "string",
+                        "description": "Surname"
+                    },
+                    "password": {
+                        "type": "string",
+                        "description": "Password"
+                    },
+                    "type": {
+                        "type": "string",
+                        "description": "User type (1=User, 2=Admin, 3=Super Admin)"
+                    }
+                },
+                required=["username", "name", "surname", "password"]
+            )
+        )
+
+        self.register_tool(
+            name="remove_user",
+            description="Remove a Zabbix user",
+            handler=self.remove_user,
+            schema=create_json_schema(
+                properties={
+                    "username": {
+                        "type": "string",
+                        "description": "Username to remove"
+                    }
+                },
+                required=["username"]
+            )
+        )
+
+        # Maintenance
+        self.register_tool(
+            name="show_maintenance_definitions",
+            description="Show all maintenance periods",
+            handler=self.show_maintenance_definitions,
+            schema=create_json_schema(properties={}, required=[])
+        )
+
+        self.register_tool(
+            name="create_maintenance_definition",
+            description="Create a maintenance period",
+            handler=self.create_maintenance_definition,
+            schema=create_json_schema(
+                properties={
+                    "name": {
+                        "type": "string",
+                        "description": "Maintenance name"
+                    },
+                    "hostgroups": {
+                        "type": "string",
+                        "description": "Comma-separated hostgroup names"
+                    },
+                    "start": {
+                        "type": "string",
+                        "description": "Start time (YYYY-MM-DD HH:MM)"
+                    },
+                    "stop": {
+                        "type": "string",
+                        "description": "Stop time (YYYY-MM-DD HH:MM)"
+                    }
+                },
+                required=["name", "hostgroups", "start", "stop"]
+            )
+        )
+
+        self.register_tool(
+            name="remove_maintenance_definition",
+            description="Remove a maintenance period",
+            handler=self.remove_maintenance_definition,
+            schema=create_json_schema(
+                properties={
+                    "name": {
+                        "type": "string",
+                        "description": "Maintenance name to remove"
+                    }
+                },
+                required=["name"]
+            )
+        )
+
+    # Host management handlers
+    def show_hosts(self, args: dict) -> dict:
+        """Show all hosts"""
+        filter_arg = args.get("filter", "")
+        cmd = f"show_hosts {filter_arg}".strip()
+        return self.execute_cli_command(cmd)
+
+    def show_host(self, args: dict) -> dict:
+        """Show host details"""
+        cmd = f"show_host {args['hostname']}"
+        return self.execute_cli_command(cmd)
+
+    def create_host(self, args: dict) -> dict:
+        """Create a host"""
+        proxy = args.get('proxy', '')
+        cmd = f"create_host {args['hostname']} {args['hostgroups']} {args['ip']} {proxy}".strip()
