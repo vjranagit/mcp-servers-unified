@@ -275,3 +275,267 @@ def star_email(message_id: str, star: bool = True) -> dict:
 
         return {
             "status": "success",
+            "message_id": message_id,
+            "action": action
+        }
+
+    except Exception as error:
+        return {"status": "error", "message": str(error)}
+
+def list_labels() -> dict:
+    """List all Gmail labels"""
+    service = get_gmail_service()
+
+    try:
+        results = service.users().labels().list(userId='me').execute()
+        labels = results.get('labels', [])
+
+        label_list = [{
+            "id": label['id'],
+            "name": label['name'],
+            "type": label.get('type', 'user')
+        } for label in labels]
+
+        return {
+            "status": "success",
+            "count": len(label_list),
+            "labels": label_list
+        }
+
+    except Exception as error:
+        return {"status": "error", "message": str(error)}
+
+def add_label(message_id: str, label_id: str) -> dict:
+    """Add a label to an email"""
+    service = get_gmail_service()
+
+    try:
+        service.users().messages().modify(
+            userId='me',
+            id=message_id,
+            body={'addLabelIds': [label_id]}
+        ).execute()
+
+        return {
+            "status": "success",
+            "message_id": message_id,
+            "label_id": label_id,
+            "action": "label_added"
+        }
+
+    except Exception as error:
+        return {"status": "error", "message": str(error)}
+
+def remove_label(message_id: str, label_id: str) -> dict:
+    """Remove a label from an email"""
+    service = get_gmail_service()
+
+    try:
+        service.users().messages().modify(
+            userId='me',
+            id=message_id,
+            body={'removeLabelIds': [label_id]}
+        ).execute()
+
+        return {
+            "status": "success",
+            "message_id": message_id,
+            "label_id": label_id,
+            "action": "label_removed"
+        }
+
+    except Exception as error:
+        return {"status": "error", "message": str(error)}
+
+def create_draft(to: str, subject: str, body: str) -> dict:
+    """Create a draft email"""
+    service = get_gmail_service()
+
+    try:
+        from email.mime.text import MIMEText
+
+        message = MIMEText(body)
+        message['to'] = to
+        message['subject'] = subject
+
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+
+        draft = service.users().drafts().create(
+            userId='me',
+            body={'message': {'raw': raw_message}}
+        ).execute()
+
+        return {
+            "status": "success",
+            "draft_id": draft['id'],
+            "message_id": draft['message']['id'],
+            "to": to,
+            "subject": subject
+        }
+
+    except Exception as error:
+        return {"status": "error", "message": str(error)}
+
+def reply_to_email(message_id: str, body: str) -> dict:
+    """Reply to an email"""
+    service = get_gmail_service()
+
+    try:
+        from email.mime.text import MIMEText
+
+        # Get original message
+        original = service.users().messages().get(
+            userId='me',
+            id=message_id,
+            format='metadata',
+            metadataHeaders=['From', 'Subject', 'Message-ID']
+        ).execute()
+
+        headers = original['payload'].get('headers', [])
+        original_from = next((h['value'] for h in headers if h['name'] == 'From'), '')
+        original_subject = next((h['value'] for h in headers if h['name'] == 'Subject'), '')
+        message_id_header = next((h['value'] for h in headers if h['name'] == 'Message-ID'), '')
+
+        # Extract email from "Name <email>" format
+        import re
+        email_match = re.search(r'<(.+?)>', original_from)
+        to_email = email_match.group(1) if email_match else original_from
+
+        # Create reply
+        message = MIMEText(body)
+        message['to'] = to_email
+        message['subject'] = f"Re: {original_subject}" if not original_subject.startswith('Re:') else original_subject
+        message['In-Reply-To'] = message_id_header
+        message['References'] = message_id_header
+
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+
+        sent_message = service.users().messages().send(
+            userId='me',
+            body={
+                'raw': raw_message,
+                'threadId': original.get('threadId')
+            }
+        ).execute()
+
+        return {
+            "status": "success",
+            "message_id": sent_message['id'],
+            "thread_id": sent_message.get('threadId'),
+            "replied_to": message_id
+        }
+
+    except Exception as error:
+        return {"status": "error", "message": str(error)}
+
+def get_thread(thread_id: str) -> dict:
+    """Get all messages in a thread/conversation"""
+    service = get_gmail_service()
+
+    try:
+        thread = service.users().threads().get(
+            userId='me',
+            id=thread_id,
+            format='metadata',
+            metadataHeaders=['From', 'Subject', 'Date']
+        ).execute()
+
+        messages = []
+        for msg in thread.get('messages', []):
+            headers = msg['payload'].get('headers', [])
+
+            subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
+            from_addr = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown')
+            date = next((h['value'] for h in headers if h['name'] == 'Date'), 'Unknown')
+
+            messages.append({
+                "id": msg['id'],
+                "subject": subject,
+                "from": from_addr,
+                "date": date
+            })
+
+        return {
+            "status": "success",
+            "thread_id": thread_id,
+            "message_count": len(messages),
+            "messages": messages
+        }
+
+    except Exception as error:
+        return {"status": "error", "message": str(error)}
+
+def list_attachments(message_id: str) -> dict:
+    """List all attachments in an email"""
+    service = get_gmail_service()
+
+    try:
+        message = service.users().messages().get(
+            userId='me',
+            id=message_id,
+            format='full'
+        ).execute()
+
+        attachments = []
+
+        def extract_attachments(parts):
+            """Recursively extract attachments from message parts"""
+            for part in parts:
+                if part.get('filename') and part.get('body', {}).get('attachmentId'):
+                    attachment_info = {
+                        "filename": part['filename'],
+                        "mimeType": part.get('mimeType', 'unknown'),
+                        "size": part['body'].get('size', 0),
+                        "attachmentId": part['body']['attachmentId']
+                    }
+                    attachments.append(attachment_info)
+
+                # Recursively check nested parts
+                if 'parts' in part:
+                    extract_attachments(part['parts'])
+
+        # Extract attachments from message payload
+        payload = message.get('payload', {})
+        if 'parts' in payload:
+            extract_attachments(payload['parts'])
+
+        return {
+            "status": "success",
+            "message_id": message_id,
+            "attachment_count": len(attachments),
+            "attachments": attachments
+        }
+
+    except Exception as error:
+        return {"status": "error", "message": str(error)}
+
+def download_attachment(message_id: str, attachment_id: str, filename: str, save_path: str = None) -> dict:
+    """Download an email attachment"""
+    service = get_gmail_service()
+
+    try:
+        # Get the attachment data
+        attachment = service.users().messages().attachments().get(
+            userId='me',
+            messageId=message_id,
+            id=attachment_id
+        ).execute()
+
+        # Decode the attachment data
+        file_data = base64.urlsafe_b64decode(attachment['data'])
+
+        # Determine save path
+        if not save_path:
+            save_path = Path.home() / "Downloads" / filename
+        else:
+            save_path = Path(save_path) / filename
+
+        # Ensure directory exists
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write file
+        with open(save_path, 'wb') as f:
+            f.write(file_data)
+
+        return {
+            "status": "success",
