@@ -539,3 +539,232 @@ def download_attachment(message_id: str, attachment_id: str, filename: str, save
 
         return {
             "status": "success",
+            "message_id": message_id,
+            "attachment_id": attachment_id,
+            "filename": filename,
+            "saved_to": str(save_path),
+            "size_bytes": len(file_data)
+        }
+
+    except Exception as error:
+        return {"status": "error", "message": str(error)}
+
+# Create MCP server
+app = Server("enhanced-gmail-mcp")
+
+@app.list_tools()
+async def list_tools() -> list[Tool]:
+    """List available Gmail tools"""
+    return [
+        Tool(
+            name="search_emails",
+            description="Search Gmail messages using Gmail search syntax. Returns a list of matching emails with subject, from, date, and unread status.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Gmail search query (e.g., 'is:unread', 'from:someone@example.com', 'subject:important')",
+                        "default": "is:unread"
+                    },
+                    "max_results": {
+                        "type": "number",
+                        "description": "Maximum number of results to return",
+                        "default": 10
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="read_email",
+            description="Read the full content of an email by its message ID. Returns subject, from, to, date, and email body.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": "The Gmail message ID to read"
+                    }
+                },
+                "required": ["message_id"]
+            }
+        ),
+        Tool(
+            name="send_email",
+            description="Send an email to a recipient with a subject and body. Supports CC and BCC.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "to": {
+                        "type": "string",
+                        "description": "Recipient email address"
+                    },
+                    "subject": {
+                        "type": "string",
+                        "description": "Email subject"
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Email body content"
+                    },
+                    "cc": {
+                        "type": "string",
+                        "description": "CC email addresses (optional)"
+                    },
+                    "bcc": {
+                        "type": "string",
+                        "description": "BCC email addresses (optional)"
+                    }
+                },
+                "required": ["to", "subject", "body"]
+            }
+        ),
+        Tool(
+            name="mark_as_read",
+            description="Mark an email as read by removing the UNREAD label.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": "The Gmail message ID to mark as read"
+                    }
+                },
+                "required": ["message_id"]
+            }
+        ),
+        Tool(
+            name="mark_as_unread",
+            description="Mark an email as unread by adding the UNREAD label.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": "The Gmail message ID to mark as unread"
+                    }
+                },
+                "required": ["message_id"]
+            }
+        ),
+        Tool(
+            name="delete_email",
+            description="Move an email to trash (can be recovered from trash).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": "The Gmail message ID to delete"
+                    }
+                },
+                "required": ["message_id"]
+            }
+        ),
+        Tool(
+            name="archive_email",
+            description="Archive an email by removing it from the inbox (removes INBOX label).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": "The Gmail message ID to archive"
+                    }
+                },
+                "required": ["message_id"]
+            }
+        ),
+        Tool(
+            name="star_email",
+            description="Star or unstar an email to mark it as important.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": "The Gmail message ID to star/unstar"
+                    },
+                    "star": {
+                        "type": "boolean",
+                        "description": "True to star, False to unstar",
+                        "default": True
+                    }
+                },
+                "required": ["message_id"]
+            }
+        ),
+        Tool(
+            name="list_labels",
+            description="List all Gmail labels (folders) available in the account.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="add_label",
+            description="Add a label to an email message.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": "The Gmail message ID"
+                    },
+                    "label_id": {
+                        "type": "string",
+                        "description": "The label ID to add (use list_labels to get label IDs)"
+                    }
+                },
+                "required": ["message_id", "label_id"]
+            }
+        ),
+        Tool(
+            name="remove_label",
+            description="Remove a label from an email message.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": "The Gmail message ID"
+                    },
+                    "label_id": {
+                        "type": "string",
+                        "description": "The label ID to remove"
+                    }
+                },
+                "required": ["message_id", "label_id"]
+            }
+        ),
+        Tool(
+            name="create_draft",
+            description="Create a draft email that can be sent later.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "to": {
+                        "type": "string",
+                        "description": "Recipient email address"
+                    },
+                    "subject": {
+                        "type": "string",
+                        "description": "Email subject"
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Email body content"
+                    }
+                },
+                "required": ["to", "subject", "body"]
+            }
+        ),
+        Tool(
+            name="reply_to_email",
+            description="Reply to an existing email message in the same thread.",
+            inputSchema={
+                "type": "object",
+                "properties": {
