@@ -768,3 +768,186 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": "The Gmail message ID to reply to"
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Reply message body"
+                    }
+                },
+                "required": ["message_id", "body"]
+            }
+        ),
+        Tool(
+            name="get_thread",
+            description="Get all messages in an email thread/conversation.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "thread_id": {
+                        "type": "string",
+                        "description": "The Gmail thread ID"
+                    }
+                },
+                "required": ["thread_id"]
+            }
+        ),
+        Tool(
+            name="list_attachments",
+            description="List all attachments in an email. Returns filename, MIME type, size, and attachment ID for each attachment.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": "The Gmail message ID"
+                    }
+                },
+                "required": ["message_id"]
+            }
+        ),
+        Tool(
+            name="download_attachment",
+            description="Download an email attachment to local storage. By default saves to ~/Downloads folder.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": "The Gmail message ID"
+                    },
+                    "attachment_id": {
+                        "type": "string",
+                        "description": "The attachment ID (from list_attachments)"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "The filename to save the attachment as"
+                    },
+                    "save_path": {
+                        "type": "string",
+                        "description": "Optional custom directory path to save the attachment (defaults to ~/Downloads)"
+                    }
+                },
+                "required": ["message_id", "attachment_id", "filename"]
+            }
+        )
+    ]
+
+@app.call_tool()
+async def call_tool(name: str, arguments: Any) -> list[TextContent]:
+    """Handle tool calls"""
+
+    if name == "search_emails":
+        query = arguments.get("query", "is:unread")
+        max_results = arguments.get("max_results", 10)
+        result = search_emails(query, max_results)
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "read_email":
+        message_id = arguments.get("message_id")
+        if not message_id:
+            return [TextContent(type="text", text=json.dumps({"status": "error", "message": "message_id is required"}))]
+        result = read_email(message_id)
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "send_email":
+        to = arguments.get("to")
+        subject = arguments.get("subject")
+        body = arguments.get("body")
+        cc = arguments.get("cc")
+        bcc = arguments.get("bcc")
+        if not all([to, subject, body]):
+            return [TextContent(type="text", text=json.dumps({"status": "error", "message": "to, subject, and body are required"}))]
+        result = send_email(to, subject, body, cc, bcc)
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "mark_as_read":
+        message_id = arguments.get("message_id")
+        if not message_id:
+            return [TextContent(type="text", text=json.dumps({"status": "error", "message": "message_id is required"}))]
+        result = mark_as_read(message_id)
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "mark_as_unread":
+        message_id = arguments.get("message_id")
+        if not message_id:
+            return [TextContent(type="text", text=json.dumps({"status": "error", "message": "message_id is required"}))]
+        result = mark_as_unread(message_id)
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "delete_email":
+        message_id = arguments.get("message_id")
+        if not message_id:
+            return [TextContent(type="text", text=json.dumps({"status": "error", "message": "message_id is required"}))]
+        result = delete_email(message_id)
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "archive_email":
+        message_id = arguments.get("message_id")
+        if not message_id:
+            return [TextContent(type="text", text=json.dumps({"status": "error", "message": "message_id is required"}))]
+        result = archive_email(message_id)
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "star_email":
+        message_id = arguments.get("message_id")
+        star = arguments.get("star", True)
+        if not message_id:
+            return [TextContent(type="text", text=json.dumps({"status": "error", "message": "message_id is required"}))]
+        result = star_email(message_id, star)
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "list_labels":
+        result = list_labels()
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "add_label":
+        message_id = arguments.get("message_id")
+        label_id = arguments.get("label_id")
+        if not all([message_id, label_id]):
+            return [TextContent(type="text", text=json.dumps({"status": "error", "message": "message_id and label_id are required"}))]
+        result = add_label(message_id, label_id)
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "remove_label":
+        message_id = arguments.get("message_id")
+        label_id = arguments.get("label_id")
+        if not all([message_id, label_id]):
+            return [TextContent(type="text", text=json.dumps({"status": "error", "message": "message_id and label_id are required"}))]
+        result = remove_label(message_id, label_id)
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "create_draft":
+        to = arguments.get("to")
+        subject = arguments.get("subject")
+        body = arguments.get("body")
+        if not all([to, subject, body]):
+            return [TextContent(type="text", text=json.dumps({"status": "error", "message": "to, subject, and body are required"}))]
+        result = create_draft(to, subject, body)
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "reply_to_email":
+        message_id = arguments.get("message_id")
+        body = arguments.get("body")
+        if not all([message_id, body]):
+            return [TextContent(type="text", text=json.dumps({"status": "error", "message": "message_id and body are required"}))]
+        result = reply_to_email(message_id, body)
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "get_thread":
+        thread_id = arguments.get("thread_id")
+        if not thread_id:
+            return [TextContent(type="text", text=json.dumps({"status": "error", "message": "thread_id is required"}))]
+        result = get_thread(thread_id)
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    elif name == "list_attachments":
+        message_id = arguments.get("message_id")
+        if not message_id:
+            return [TextContent(type="text", text=json.dumps({"status": "error", "message": "message_id is required"}))]
+        result = list_attachments(message_id)
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
