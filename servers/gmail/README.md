@@ -283,3 +283,365 @@ cat ~/.gmail-mcp/credentials.json | head -n 5
 New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.gmail-mcp"
 
 # Copy credentials (adjust path if needed)
+Copy-Item "$env:USERPROFILE\Downloads\credentials.json" "$env:USERPROFILE\.gmail-mcp\credentials.json"
+
+# Verify
+Get-Item "$env:USERPROFILE\.gmail-mcp\credentials.json"
+```
+
+**Expected credentials.json format:**
+```json
+{
+  "installed": {
+    "client_id": "123456789-abcdefg.apps.googleusercontent.com",
+    "project_id": "gmail-mcp-server-123456",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "client_secret": "GOCSPX-xxxxxxxxxxxxx",
+    ...
+  }
+}
+```
+
+⚠️ **Security Note**: This file contains your OAuth client secret. Never commit it to git or share it publicly.
+
+---
+
+### Step 6: Authenticate with Gmail
+
+Now authenticate your Gmail account to generate an access token.
+
+```bash
+# Ensure virtual environment is activated
+source venv/bin/activate  # Linux/macOS
+# venv\Scripts\activate  # Windows
+
+# Run authentication
+python enhanced_server.py --authenticate
+```
+
+**What happens:**
+
+1. **Browser Opens Automatically**
+   - A browser window/tab opens to Google sign-in page
+   - If browser doesn't open, copy/paste the URL shown in terminal
+
+2. **Sign In**
+   - Sign in with your Gmail account
+   - ⚠️ Must be the same account you added as "Test User" in Step 3
+
+3. **Grant Permissions**
+   - You'll see: "Gmail MCP Server wants to access your Google Account"
+   - Review permissions:
+     - ✅ Read, compose, send, and permanently delete all your email from Gmail
+   - Click **"Continue"** or **"Allow"**
+
+4. **Success Confirmation**
+   - Browser shows: "The authentication flow has completed"
+   - Terminal shows: "Authentication successful! Token saved."
+   - Token saved to: `~/.gmail-mcp/token.json`
+
+5. **Close Browser**
+   - You can now close the browser tab/window
+
+**Token file created:**
+```bash
+ls -lh ~/.gmail-mcp/
+# Should show:
+# credentials.json  (OAuth client credentials)
+# token.json        (Your access token) ← Just created
+```
+
+---
+
+### Troubleshooting Credentials Setup
+
+#### Error: "Access blocked: This app's request is invalid"
+
+**Cause**: OAuth consent screen not configured properly.
+
+**Solution**:
+1. Go back to OAuth consent screen
+2. Verify your email is added as **Test User**
+3. Verify scope `https://www.googleapis.com/auth/gmail.modify` is added
+4. Try authenticating again
+
+---
+
+#### Error: "Redirect URI mismatch"
+
+**Cause**: Wrong application type selected (Web app instead of Desktop app).
+
+**Solution**:
+1. Go to Credentials page
+2. Delete the existing OAuth client ID
+3. Create new one with **Application type: Desktop app**
+4. Download new credentials.json
+5. Replace `~/.gmail-mcp/credentials.json`
+6. Try authenticating again
+
+---
+
+#### Error: "The file credentials.json is not found"
+
+**Cause**: Credentials file not in correct location.
+
+**Solution**:
+```bash
+# Check if file exists
+ls -la ~/.gmail-mcp/credentials.json
+
+# If not found, copy it again
+cp ~/Downloads/credentials.json ~/.gmail-mcp/credentials.json
+```
+
+---
+
+#### Error: "Invalid client"
+
+**Cause**: Corrupted or invalid credentials.json file.
+
+**Solution**:
+1. Open credentials.json in text editor
+2. Verify it's valid JSON (starts with `{`, ends with `}`)
+3. If corrupted, download fresh copy from Google Cloud Console
+4. Replace file and try again
+
+---
+
+#### Error: "This app isn't verified"
+
+**Cause**: Your app is in testing mode (normal for personal use).
+
+**Solution**:
+1. Click **"Advanced"** (bottom left)
+2. Click **"Go to Gmail MCP Server (unsafe)"**
+3. This is safe - it's your own app
+4. Continue with authentication
+
+---
+
+### Verifying Credentials Are Working
+
+After successful authentication, verify everything works:
+
+```bash
+# Test authentication and API access
+python -c "
+from enhanced_server import get_gmail_service
+service = get_gmail_service()
+profile = service.users().getProfile(userId='me').execute()
+print(f'✅ Authenticated as: {profile[\"emailAddress\"]}')
+print(f'✅ Total messages: {profile[\"messagesTotal\"]}')
+"
+```
+
+**Expected output:**
+```
+✅ Authenticated as: REDACTED_EMAIL
+✅ Total messages: 12345
+```
+
+---
+
+## Configuration
+
+After credentials are set up and authentication is complete, configure your MCP client.
+
+### For Claude Code
+
+**Config file**: `~/.claude.json`
+
+**Find your installation path:**
+```bash
+cd /path/to/enhanced-gmail-mcp
+pwd
+# Copy the output - this is your absolute path
+```
+
+**Edit ~/.claude.json:**
+
+**Linux/macOS:**
+```json
+{
+  "mcpServers": {
+    "gmail": {
+      "type": "stdio",
+      "command": "/absolute/path/to/enhanced-gmail-mcp/venv/bin/python",
+      "args": [
+        "/absolute/path/to/enhanced-gmail-mcp/enhanced_server.py"
+      ],
+      "env": {}
+    }
+  }
+}
+```
+
+**Windows:**
+```json
+{
+  "mcpServers": {
+    "gmail": {
+      "type": "stdio",
+      "command": "C:\\absolute\\path\\to\\enhanced-gmail-mcp\\venv\\Scripts\\python.exe",
+      "args": [
+        "C:\\absolute\\path\\to\\enhanced-gmail-mcp\\enhanced_server.py"
+      ],
+      "env": {}
+    }
+  }
+}
+```
+
+**Important notes:**
+- ⚠️ Replace `/absolute/path/to/` with your actual path
+- ✅ Use **absolute paths** (not `~/` or relative paths)
+- ✅ Ensure `command` points to Python **inside venv** folder
+- ✅ On Windows, use double backslashes `\\` or forward slashes `/`
+
+**Restart Claude Code** completely (quit and relaunch) after configuration.
+
+---
+
+### For Claude Desktop
+
+**Config file locations:**
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+
+**Configuration:**
+
+**macOS/Linux:**
+```json
+{
+  "mcpServers": {
+    "gmail": {
+      "command": "/absolute/path/to/enhanced-gmail-mcp/venv/bin/python",
+      "args": ["/absolute/path/to/enhanced-gmail-mcp/enhanced_server.py"]
+    }
+  }
+}
+```
+
+**Windows:**
+```json
+{
+  "mcpServers": {
+    "gmail": {
+      "command": "C:\\absolute\\path\\to\\enhanced-gmail-mcp\\venv\\Scripts\\python.exe",
+      "args": ["C:\\absolute\\path\\to\\enhanced-gmail-mcp\\enhanced_server.py"]
+    }
+  }
+}
+```
+
+**After configuration:**
+1. **Restart** Claude Desktop completely (quit and relaunch)
+2. Tools should appear in MCP tools menu
+3. Look for: `gmail:search_emails`, `gmail:read_email`, etc.
+
+---
+
+### Verifying Configuration
+
+**Method 1: Check MCP tools in Claude**
+
+After restarting, ask Claude:
+```
+Can you list my Gmail labels?
+```
+
+If configured correctly, Claude should use `mcp__gmail__list_labels` tool.
+
+**Method 2: Direct test**
+
+```bash
+# Activate virtual environment
+source venv/bin/activate
+
+# Test server directly
+python -c "
+from enhanced_server import search_emails
+result = search_emails(query='is:inbox', max_results=3)
+print(result)
+"
+```
+
+**Method 3: Run test suite**
+
+```bash
+cd /path/to/enhanced-gmail-mcp
+python test_all_features.py
+# Expected: ✅ All executed tests PASSED!
+```
+
+---
+
+## Usage Examples
+
+### Search and Read Emails
+
+```python
+# Search unread emails
+search_emails(query="is:unread", max_results=10)
+
+# Search by sender
+search_emails(query="from:REDACTED_EMAIL")
+
+# Complex search
+search_emails(query="is:unread subject:urgent has:attachment")
+
+# Read full email
+read_email(message_id="abc123")
+```
+
+### Manage Email Attachments ⭐ NEW
+
+```python
+# List all attachments in an email
+attachments = list_attachments(message_id="abc123")
+# Returns:
+# {
+#   "status": "success",
+#   "message_id": "abc123",
+#   "attachment_count": 2,
+#   "attachments": [
+#     {
+#       "filename": "document.pdf",
+#       "mimeType": "application/pdf",
+#       "size": 42826,
+#       "attachmentId": "ANGjdJ..."
+#     },
+#     {
+#       "filename": "image.png",
+#       "mimeType": "image/png",
+#       "size": 6479,
+#       "attachmentId": "ANGjdJ..."
+#     }
+#   ]
+# }
+
+# Download attachment to ~/Downloads (default)
+download_attachment(
+    message_id="abc123",
+    attachment_id="ANGjdJ...",
+    filename="document.pdf"
+)
+
+# Download to custom location
+download_attachment(
+    message_id="abc123",
+    attachment_id="ANGjdJ...",
+    filename="report.pdf",
+    save_path="/home/user/Documents"
+)
+```
+
+### Organize Emails
+
+```python
+# Mark as read
+mark_as_read(message_id="abc123")
+
+# Mark as unread
