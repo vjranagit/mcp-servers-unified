@@ -645,3 +645,391 @@ download_attachment(
 mark_as_read(message_id="abc123")
 
 # Mark as unread
+mark_as_unread(message_id="abc123")
+
+# Star important email
+star_email(message_id="abc123", star=True)
+
+# Unstar
+star_email(message_id="abc123", star=False)
+
+# Add label
+labels = list_labels()  # Get label IDs first
+add_label(message_id="abc123", label_id="Label_123")
+
+# Remove label
+remove_label(message_id="abc123", label_id="Label_123")
+
+# Archive (remove from inbox)
+archive_email(message_id="abc123")
+
+# Delete (move to trash, recoverable for 30 days)
+delete_email(message_id="abc123")
+```
+
+### Send Emails
+
+```python
+# Simple email
+send_email(
+    to="recipient@example.com",
+    subject="Meeting Tomorrow",
+    body="Let's meet at 2 PM in conference room A."
+)
+
+# Email with CC and BCC
+send_email(
+    to="recipient@example.com",
+    subject="Team Update",
+    body="Here's the weekly update...",
+    cc="REDACTED_EMAIL",
+    bcc="REDACTED_EMAIL"
+)
+
+# Reply to email
+reply_to_email(
+    message_id="abc123",
+    body="Thanks for your email. I'll look into this."
+)
+
+# Create draft
+create_draft(
+    to="client@example.com",
+    subject="Project Proposal",
+    body="Attached is the proposal we discussed..."
+)
+```
+
+### Work with Threads
+
+```python
+# Get entire email conversation
+thread = get_thread(thread_id="thread_abc123")
+# Returns all messages in the thread with full content
+```
+
+### Automate Email Workflows
+
+```python
+# Automated job email organization
+jobs = search_emails(query='subject:(job OR opportunity) is:unread', max_results=10)
+
+for job in jobs['messages']:
+    email = read_email(job['id'])
+
+    # Filter for engineering jobs
+    if 'engineer' in email['subject'].lower() or 'developer' in email['subject'].lower():
+        star_email(job['id'])  # Star important ones
+        add_label(job['id'], "Label_job_opportunities")  # Add job label
+        mark_as_read(job['id'])  # Mark as processed
+
+# Save attachments from important emails
+important = search_emails(query='is:starred has:attachment', max_results=5)
+for msg in important['messages']:
+    attachments = list_attachments(msg['id'])
+    for att in attachments['attachments']:
+        if att['filename'].endswith('.pdf'):
+            download_attachment(
+                message_id=msg['id'],
+                attachment_id=att['attachmentId'],
+                filename=att['filename'],
+                save_path="/home/user/important-docs"
+            )
+```
+
+### Gmail Search Syntax
+
+Powerful search operators:
+
+**Status filters:**
+- `is:unread` / `is:read` / `is:starred` / `is:important`
+- `is:sent` / `is:draft` / `is:inbox`
+
+**Sender/Recipient:**
+- `from:sender@example.com`
+- `to:recipient@example.com`
+
+**Content:**
+- `subject:keyword` - Subject contains keyword
+- `body:keyword` - Body contains keyword
+- `has:attachment` - Has attachments
+- `filename:pdf` - Has PDF attachment
+
+**Date filters:**
+- `after:2025/01/01` / `before:2025/12/31`
+- `newer_than:2d` (2 days) / `older_than:1m` (1 month)
+- `newer_than:1h` (1 hour)
+
+**Labels:**
+- `label:work` / `label:important`
+
+**Combine with AND/OR:**
+- `is:unread from:REDACTED_EMAIL` (AND is implicit)
+- `subject:urgent OR subject:important`
+- `from:(alice@example.com OR bob@example.com)`
+
+**Advanced:**
+- `has:drive` - Has Google Drive attachment
+- `has:youtube` - Has YouTube video
+- `larger:5M` - Larger than 5MB
+- `smaller:1M` - Smaller than 1MB
+- `-from:spam@example.com` - Exclude sender
+
+---
+
+## API Reference
+
+### search_emails(query, max_results)
+Search Gmail messages using Gmail query syntax.
+
+**Parameters:**
+- `query` (str, optional): Gmail search query. Default: `"is:unread"`
+- `max_results` (int, optional): Maximum results to return. Default: `10`
+
+**Returns:**
+```json
+{
+  "status": "success",
+  "count": 5,
+  "query": "is:unread",
+  "messages": [
+    {
+      "id": "abc123",
+      "subject": "Meeting Tomorrow",
+      "from": "REDACTED_EMAIL",
+      "date": "Thu, 9 Oct 2025 14:30:00 +0000",
+      "unread": true
+    }
+  ]
+}
+```
+
+---
+
+### read_email(message_id)
+Read full email content including body, headers, and metadata.
+
+**Parameters:**
+- `message_id` (str, required): Gmail message ID
+
+**Returns:**
+```json
+{
+  "status": "success",
+  "message_id": "abc123",
+  "subject": "Meeting Tomorrow",
+  "from": "Boss <REDACTED_EMAIL>",
+  "to": "REDACTED_EMAIL",
+  "date": "Thu, 9 Oct 2025 14:30:00 +0000",
+  "body": "Full email body content here...",
+  "labels": ["INBOX", "UNREAD", "IMPORTANT"]
+}
+```
+
+---
+
+### list_attachments(message_id) ⭐ NEW
+List all attachments in an email with metadata.
+
+**Parameters:**
+- `message_id` (str, required): Gmail message ID
+
+**Returns:**
+```json
+{
+  "status": "success",
+  "message_id": "abc123",
+  "attachment_count": 2,
+  "attachments": [
+    {
+      "filename": "document.pdf",
+      "mimeType": "application/pdf",
+      "size": 42826,
+      "attachmentId": "ANGjdJ_12345"
+    }
+  ]
+}
+```
+
+---
+
+### download_attachment(message_id, attachment_id, filename, save_path) ⭐ NEW
+Download email attachment to local storage.
+
+**Parameters:**
+- `message_id` (str, required): Gmail message ID
+- `attachment_id` (str, required): Attachment ID from `list_attachments`
+- `filename` (str, required): Filename to save as
+- `save_path` (str, optional): Directory path. Default: `~/Downloads`
+
+**Returns:**
+```json
+{
+  "status": "success",
+  "message_id": "abc123",
+  "attachment_id": "ANGjdJ_12345",
+  "filename": "document.pdf",
+  "saved_to": "/home/user/Downloads/document.pdf",
+  "size_bytes": 42826
+}
+```
+
+---
+
+### send_email(to, subject, body, cc, bcc)
+Send an email with optional CC and BCC recipients.
+
+**Parameters:**
+- `to` (str, required): Recipient email address
+- `subject` (str, required): Email subject line
+- `body` (str, required): Email body content
+- `cc` (str, optional): CC recipients (comma-separated)
+- `bcc` (str, optional): BCC recipients (comma-separated)
+
+**Returns:**
+```json
+{
+  "status": "success",
+  "message_id": "xyz789",
+  "to": "recipient@example.com",
+  "subject": "Meeting Tomorrow"
+}
+```
+
+---
+
+### mark_as_read(message_id) / mark_as_unread(message_id)
+Mark email as read or unread.
+
+**Parameters:**
+- `message_id` (str, required): Gmail message ID
+
+**Returns:**
+```json
+{
+  "status": "success",
+  "message_id": "abc123",
+  "action": "marked_as_read"
+}
+```
+
+---
+
+### star_email(message_id, star)
+Star or unstar an email.
+
+**Parameters:**
+- `message_id` (str, required): Gmail message ID
+- `star` (bool, optional): `true` to star, `false` to unstar. Default: `true`
+
+**Returns:**
+```json
+{
+  "status": "success",
+  "message_id": "abc123",
+  "action": "starred"
+}
+```
+
+---
+
+### list_labels()
+List all Gmail labels (folders).
+
+**Parameters:** None
+
+**Returns:**
+```json
+{
+  "status": "success",
+  "count": 26,
+  "labels": [
+    {
+      "id": "INBOX",
+      "name": "INBOX",
+      "type": "system"
+    },
+    {
+      "id": "Label_123",
+      "name": "Work",
+      "type": "user"
+    }
+  ]
+}
+```
+
+---
+
+### add_label(message_id, label_id) / remove_label(message_id, label_id)
+Add or remove a label from an email.
+
+**Parameters:**
+- `message_id` (str, required): Gmail message ID
+- `label_id` (str, required): Label ID from `list_labels`
+
+**Returns:**
+```json
+{
+  "status": "success",
+  "message_id": "abc123",
+  "label_id": "Label_123",
+  "action": "label_added"
+}
+```
+
+---
+
+### create_draft(to, subject, body)
+Create a draft email.
+
+**Parameters:**
+- `to` (str, required): Recipient email address
+- `subject` (str, required): Email subject
+- `body` (str, required): Email body content
+
+**Returns:**
+```json
+{
+  "status": "success",
+  "draft_id": "r123456789",
+  "message_id": "abc123",
+  "to": "recipient@example.com",
+  "subject": "Draft Subject"
+}
+```
+
+---
+
+### reply_to_email(message_id, body)
+Reply to an email, maintaining thread context.
+
+**Parameters:**
+- `message_id` (str, required): Original message ID to reply to
+- `body` (str, required): Reply content
+
+**Returns:**
+```json
+{
+  "status": "success",
+  "message_id": "xyz789",
+  "thread_id": "thread_abc123",
+  "action": "replied"
+}
+```
+
+---
+
+### get_thread(thread_id)
+Get all messages in an email conversation.
+
+**Parameters:**
+- `thread_id` (str, required): Gmail thread ID
+
+**Returns:**
+```json
+{
+  "status": "success",
+  "thread_id": "thread_abc123",
+  "message_count": 5,
+  "messages": [
+    {
