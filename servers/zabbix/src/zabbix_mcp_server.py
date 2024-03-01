@@ -590,3 +590,284 @@ def trigger_delete(triggerids: List[str]) -> str:
 @mcp.tool()
 def template_get(templateids: Optional[List[str]] = None,
                  groupids: Optional[List[str]] = None,
+                 hostids: Optional[List[str]] = None,
+                 output: str = "extend",
+                 search: Optional[Dict[str, str]] = None,
+                 filter: Optional[Dict[str, Any]] = None) -> str:
+    """Get templates from Zabbix with optional filtering.
+    
+    Args:
+        templateids: List of template IDs to retrieve
+        groupids: List of host group IDs to filter by
+        hostids: List of host IDs to filter by
+        output: Output format
+        search: Search criteria
+        filter: Filter criteria
+        
+    Returns:
+        str: JSON formatted list of templates
+    """
+    client = get_zabbix_client()
+    params = {"output": output}
+    
+    if templateids:
+        params["templateids"] = templateids
+    if groupids:
+        params["groupids"] = groupids
+    if hostids:
+        params["hostids"] = hostids
+    if search:
+        params["search"] = search
+    if filter:
+        params["filter"] = filter
+    
+    result = client.template.get(**params)
+    return format_response(result)
+
+
+@mcp.tool()
+def template_create(host: str, groups: List[Dict[str, str]],
+                    name: Optional[str] = None, description: Optional[str] = None) -> str:
+    """Create a new template in Zabbix.
+    
+    Args:
+        host: Template technical name
+        groups: List of host groups (format: [{"groupid": "1"}])
+        name: Template visible name
+        description: Template description
+        
+    Returns:
+        str: JSON formatted creation result
+    """
+    validate_read_only()
+    
+    client = get_zabbix_client()
+    params = {
+        "host": host,
+        "groups": groups
+    }
+    
+    if name:
+        params["name"] = name
+    if description:
+        params["description"] = description
+    
+    result = client.template.create(**params)
+    return format_response(result)
+
+
+@mcp.tool()
+def template_update(templateid: str, host: Optional[str] = None,
+                    name: Optional[str] = None, description: Optional[str] = None) -> str:
+    """Update an existing template in Zabbix.
+    
+    Args:
+        templateid: Template ID to update
+        host: New template technical name
+        name: New template visible name
+        description: New template description
+        
+    Returns:
+        str: JSON formatted update result
+    """
+    validate_read_only()
+    
+    client = get_zabbix_client()
+    params = {"templateid": templateid}
+    
+    if host:
+        params["host"] = host
+    if name:
+        params["name"] = name
+    if description:
+        params["description"] = description
+    
+    result = client.template.update(**params)
+    return format_response(result)
+
+
+@mcp.tool()
+def template_delete(templateids: List[str]) -> str:
+    """Delete templates from Zabbix.
+    
+    Args:
+        templateids: List of template IDs to delete
+        
+    Returns:
+        str: JSON formatted deletion result
+    """
+    validate_read_only()
+    
+    client = get_zabbix_client()
+    result = client.template.delete(*templateids)
+    return format_response(result)
+
+
+# PROBLEM MANAGEMENT
+@mcp.tool()
+def problem_get(eventids: Optional[List[str]] = None,
+                groupids: Optional[List[str]] = None,
+                hostids: Optional[List[str]] = None,
+                objectids: Optional[List[str]] = None,
+                output: str = "extend",
+                time_from: Optional[int] = None,
+                time_till: Optional[int] = None,
+                recent: bool = False,
+                severities: Optional[List[int]] = None,
+                limit: Optional[int] = None) -> str:
+    """Get problems from Zabbix with optional filtering.
+    
+    Args:
+        eventids: List of event IDs to retrieve
+        groupids: List of host group IDs to filter by
+        hostids: List of host IDs to filter by
+        objectids: List of object IDs to filter by
+        output: Output format
+        time_from: Start time (Unix timestamp)
+        time_till: End time (Unix timestamp)
+        recent: Only recent problems
+        severities: List of severity levels to filter by
+        limit: Maximum number of results
+        
+    Returns:
+        str: JSON formatted list of problems
+    """
+    client = get_zabbix_client()
+    params = {"output": output}
+    
+    if eventids:
+        params["eventids"] = eventids
+    if groupids:
+        params["groupids"] = groupids
+    if hostids:
+        params["hostids"] = hostids
+    if objectids:
+        params["objectids"] = objectids
+    if time_from:
+        params["time_from"] = time_from
+    if time_till:
+        params["time_till"] = time_till
+    if recent:
+        params["recent"] = recent
+    if severities:
+        params["severities"] = severities
+    if limit:
+        params["limit"] = limit
+    
+    result = client.problem.get(**params)
+    return format_response(result)
+
+
+# EVENT MANAGEMENT
+@mcp.tool()
+def event_get(eventids: Optional[List[str]] = None,
+              groupids: Optional[List[str]] = None,
+              hostids: Optional[List[str]] = None,
+              objectids: Optional[List[str]] = None,
+              output: str = "extend",
+              time_from: Optional[int] = None,
+              time_till: Optional[int] = None,
+              limit: Optional[int] = None) -> str:
+    """Get events from Zabbix with optional filtering.
+    
+    Args:
+        eventids: List of event IDs to retrieve
+        groupids: List of host group IDs to filter by
+        hostids: List of host IDs to filter by
+        objectids: List of object IDs to filter by
+        output: Output format
+        time_from: Start time (Unix timestamp)
+        time_till: End time (Unix timestamp)
+        limit: Maximum number of results
+        
+    Returns:
+        str: JSON formatted list of events
+    """
+    client = get_zabbix_client()
+    params = {"output": output}
+    
+    if eventids:
+        params["eventids"] = eventids
+    if groupids:
+        params["groupids"] = groupids
+    if hostids:
+        params["hostids"] = hostids
+    if objectids:
+        params["objectids"] = objectids
+    if time_from:
+        params["time_from"] = time_from
+    if time_till:
+        params["time_till"] = time_till
+    if limit:
+        params["limit"] = limit
+    
+    result = client.event.get(**params)
+    return format_response(result)
+
+
+@mcp.tool()
+def event_acknowledge(eventids: List[str], action: int = 1,
+                      message: Optional[str] = None) -> str:
+    """Acknowledge events in Zabbix.
+    
+    Args:
+        eventids: List of event IDs to acknowledge
+        action: Acknowledge action (1=acknowledge, 2=close, etc.)
+        message: Acknowledge message
+        
+    Returns:
+        str: JSON formatted acknowledgment result
+    """
+    validate_read_only()
+    
+    client = get_zabbix_client()
+    params = {
+        "eventids": eventids,
+        "action": action
+    }
+    
+    if message:
+        params["message"] = message
+    
+    result = client.event.acknowledge(**params)
+    return format_response(result)
+
+
+# HISTORY MANAGEMENT
+@mcp.tool()
+def history_get(itemids: List[str], history: int = 0,
+                time_from: Optional[int] = None,
+                time_till: Optional[int] = None,
+                limit: Optional[int] = None,
+                sortfield: str = "clock",
+                sortorder: str = "DESC") -> str:
+    """Get history data from Zabbix.
+    
+    Args:
+        itemids: List of item IDs to get history for
+        history: History type (0=float, 1=character, 2=log, 3=unsigned, 4=text)
+        time_from: Start time (Unix timestamp)
+        time_till: End time (Unix timestamp)
+        limit: Maximum number of results
+        sortfield: Field to sort by
+        sortorder: Sort order (ASC or DESC)
+        
+    Returns:
+        str: JSON formatted history data
+    """
+    client = get_zabbix_client()
+    params = {
+        "itemids": itemids,
+        "history": history,
+        "sortfield": sortfield,
+        "sortorder": sortorder
+    }
+    
+    if time_from:
+        params["time_from"] = time_from
+    if time_till:
+        params["time_till"] = time_till
+    if limit:
+        params["limit"] = limit
+    
+    result = client.history.get(**params)
